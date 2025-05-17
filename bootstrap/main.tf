@@ -9,6 +9,9 @@ terraform {
   }
 }
 
+provider "aws" {
+  region = "us-east-1"  # Change if you use a different region
+}
 
 resource "random_id" "bucket_suffix" {
   byte_length = 4
