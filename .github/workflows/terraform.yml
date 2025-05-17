@@ -1,0 +1,70 @@
+name: Terraform CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-east-1
+  TF_STATE_KEY: infra/terraform.tfstate   # adjust path to your tfstate file
+
+jobs:
+  bootstrap:
+    name: Bootstrap Terraform Backend
+    runs-on: ubuntu-latest
+    outputs:
+      s3_bucket_name: ${{ steps.output_bucket.outputs.bucket_name }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Terraform Init (bootstrap)
+        working-directory: ./bootstrap
+        run: terraform init
+
+      - name: Terraform Apply (bootstrap)
+        working-directory: ./bootstrap
+        run: terraform apply -auto-approve
+
+      - name: Get S3 bucket name from output
+        id: output_bucket
+        working-directory: ./bootstrap
+        run: echo "bucket_name=$(terraform output -raw tf_state_bucket_name)" >> $GITHUB_OUTPUT
+
+  main_infra:
+    name: Deploy Main Infrastructure
+    needs: bootstrap
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+      TF_STATE_BUCKET: ${{ needs.bootstrap.outputs.s3_bucket_name }}
+      TF_STATE_KEY: infra/terraform.tfstate
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Terraform Init (main infra)
+        working-directory: ./infra
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ env.TF_STATE_KEY }}" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Terraform Apply (main infra)
+        working-directory: ./infra
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: terraform apply -auto-approve
