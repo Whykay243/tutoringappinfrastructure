@@ -44,7 +44,7 @@ jobs:
         id: output_bucket
         working-directory: ./bootstrap
         run: |
-          bucket_name=$(terraform output -raw bucket_name 2>/dev/null)
+          bucket_name=$(terraform output -raw bucket_name 2>/dev/null | tr -d '\r\n')
           if [ -z "$bucket_name" ]; then
             echo "Terraform output is missing or malformed."
             exit 1
