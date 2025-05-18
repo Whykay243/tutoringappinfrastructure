@@ -44,9 +44,9 @@ jobs:
         id: output_bucket
         working-directory: ./bootstrap
         run: |
-          bucket_name=$(terraform output -raw tf_state_bucket_name || echo "")
+          bucket_name=$(terraform output -raw bucket_name 2>/dev/null)
           if [ -z "$bucket_name" ]; then
-            echo "Failed to get tf_state_bucket_name output"
+            echo "Terraform output is missing or malformed."
             exit 1
           fi
           echo "bucket_name=$bucket_name" >> $GITHUB_OUTPUT
