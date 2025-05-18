@@ -80,7 +80,8 @@ jobs:
             -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
             -backend-config="key=${{ env.TF_STATE_KEY }}" \
             -backend-config="region=${{ env.AWS_REGION }}"
-
+            
       - name: Terraform Apply (main infra)
         working-directory: ./infra
-        run: terraform apply -auto-approve
+        run: terraform apply -auto-approve -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}"
+
