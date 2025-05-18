@@ -26,10 +26,14 @@ resource "aws_s3_bucket" "tf_state_bucket" {
   }
 }
 
-resource "aws_s3_bucket_acl" "tf_state_bucket_acl" {
+resource "aws_s3_bucket_ownership_controls" "tf_state_bucket_ownership" {
   bucket = aws_s3_bucket.tf_state_bucket.id
-  acl    = "private"
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
 }
+
 
 resource "aws_s3_bucket_versioning" "tf_state_bucket_versioning" {
   bucket = aws_s3_bucket.tf_state_bucket.id
