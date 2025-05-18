@@ -43,7 +43,13 @@ jobs:
       - name: Get S3 bucket name from output
         id: output_bucket
         working-directory: ./bootstrap
-        run: echo "bucket_name=$(terraform output -raw tf_state_bucket_name)" >> $GITHUB_OUTPUT
+        run: |
+          bucket_name=$(terraform output -raw tf_state_bucket_name || echo "")
+          if [ -z "$bucket_name" ]; then
+            echo "Failed to get tf_state_bucket_name output"
+            exit 1
+          fi
+          echo "bucket_name=$bucket_name" >> $GITHUB_OUTPUT
 
   main_infra:
     name: Deploy Main Infrastructure
