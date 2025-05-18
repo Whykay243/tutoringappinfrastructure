@@ -1,44 +1,86 @@
-terraform {
-  required_version = ">= 1.5.0"
+name: Terraform CI/CD
 
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 5.0"
-    }
-  }
-}
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
-provider "aws" {
-  region = "us-east-1"  # Change if you use a different region
-}
+env:
+  AWS_REGION: us-east-1
+  TF_STATE_KEY: infra/terraform.tfstate
 
-resource "random_id" "bucket_suffix" {
-  byte_length = 4
-}
+jobs:
+  bootstrap:
+    name: Bootstrap Terraform Backend
+    runs-on: ubuntu-latest
+    outputs:
+      s3_bucket_name: ${{ steps.output_bucket.outputs.bucket_name }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
-resource "aws_s3_bucket" "tf_state_bucket" {
-  bucket = "tutoring-tfstate-bucket-${random_id.bucket_suffix.hex}"
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-  tags = {
-    Name        = "Terraform State Bucket"
-    Environment = "Bootstrap"
-  }
-}
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
 
-resource "aws_s3_bucket_ownership_controls" "tf_state_bucket_ownership" {
-  bucket = aws_s3_bucket.tf_state_bucket.id
+      - name: Terraform Init (bootstrap)
+        working-directory: ./bootstrap
+        run: terraform init
 
-  rule {
-    object_ownership = "BucketOwnerEnforced"
-  }
-}
+      - name: Terraform Apply (bootstrap)
+        working-directory: ./bootstrap
+        run: terraform apply -auto-approve
 
+      - name: Get S3 bucket name from output
+        id: output_bucket
+        working-directory: ./bootstrap
+        run: |
+          bucket_name=$(terraform output -raw bucket_name 2>/dev/null)
+          if [ -z "$bucket_name" ]; then
+            echo "Terraform output is missing or malformed."
+            exit 1
+          fi
+          echo "bucket_name=$bucket_name" >> $GITHUB_OUTPUT
 
-resource "aws_s3_bucket_versioning" "tf_state_bucket_versioning" {
-  bucket = aws_s3_bucket.tf_state_bucket.id
+  main_infra:
+    name: Deploy Main Infrastructure
+    needs: bootstrap
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+      TF_STATE_BUCKET: ${{ needs.bootstrap.outputs.s3_bucket_name }}
+      TF_STATE_KEY: infra/terraform.tfstate
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Terraform Init (main infra)
+        working-directory: ./infra
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ env.TF_STATE_KEY }}" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Terraform Apply (main infra)
+        working-directory: ./infra
+        run: terraform apply -auto-approve
