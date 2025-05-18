@@ -1,6 +1,5 @@
 provider "aws" {
     region  = var.aws_region
-    profile = "Adeola"
 }
 
 resource "random_id" "bucket_suffix" {
